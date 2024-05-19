@@ -1,9 +1,13 @@
-import express, { Request } from 'express'
 import multer, { FileFilterCallback } from 'multer'
 import AWS from 'aws-sdk'
-import { env } from './utils/env'
 import archiver from 'archiver'
 import cors from 'cors'
+import express, { Request } from 'express'
+import { env } from './utils/env'
+
+import { exec } from 'child_process'
+import fs from 'fs'
+import path from 'path'
 
 const app = express()
 
@@ -35,6 +39,7 @@ const fileFilter = (
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     'image/jpeg',
     'image/png',
     'image/jpg',
@@ -49,39 +54,31 @@ const fileFilter = (
 
 const upload = multer({ storage, fileFilter })
 
-app.post('/upload', upload.array('files', 10), async (req, res) => {
-  if (res.errored instanceof multer.MulterError) {
-    if (res.errored.code === 'LIMIT_UNEXPECTED_FILE') {
-      return res
-        .status(400)
-        .send({ message: 'Exceeded maximum number of files (10)' })
-    }
-  }
+app.post('/upload', upload.array('files', 100), async (req, res) => {
   if (!req.files) {
     return res.status(400).send({ message: 'Invalid file type' })
   }
   if (req.files.length === 0) {
-    return res.status(400).send({ message: 'No have files to upload' })
-  }
-  if (!Array.isArray(req.files)) {
+    return res.status(400).send({ message: 'Invalid type files' })
   }
 
   try {
-    const promises = req.files.map(async file => {
+    const promises = req.files.map(async (file: Express.Multer.File) => {
       const params = {
         Bucket: env.AWS_BUCKET_NAME,
-        Key: file.originalname.replace(' ', '_').replace('-', '_').replace('.','_'),
+        Key: file.originalname.replace(' ', '_').replace('-', '_'),
+
         Body: file.buffer,
       }
-
-      await s3.upload(params).promise()
+      const result = await s3.upload(params).promise()
+      return { ...result, Size: file.size, LastModified: new Date() }
     })
+    const newResult = await Promise.all(promises)
 
-    await Promise.all(promises)
-
-    return res.status(200).json({ message: 'Upload successful' })
+    return res
+      .status(200)
+      .json({ message: 'Upload successful', files: newResult })
   } catch (error) {
-    console.error('Error uploading files to S3:', error)
     return res.status(500).json({ message: 'Error uploading files to S3' })
   }
 })
@@ -105,9 +102,8 @@ async function listAllObjects(bucket: string): Promise<AWS.S3.ObjectList> {
 }
 
 app.get('/files', async (req, res) => {
-  console.log(req.query.page)
-  const page: number = parseInt(req.query.page as string) ?? 1
-  const pageSize: number = parseInt(req.query.pageSize as string) ?? 10
+  const page = parseInt(req.query.page as string) ?? 1
+  const pageSize = parseInt(req.query.pageSize as string) ?? 10
 
   if (isNaN(page) || isNaN(pageSize) || page < 1 || pageSize < 1) {
     return res.status(400).json({ message: 'Invalid page number or page size' })
@@ -117,9 +113,15 @@ app.get('/files', async (req, res) => {
     const bucketName = env.AWS_BUCKET_NAME
     const allContents = await listAllObjects(bucketName)
 
+    const sortedContents = allContents.sort((a: any, b: any) => {
+      return (
+        new Date(b.LastModified).getTime() - new Date(a.LastModified).getTime()
+      )
+    })
+
     const startIndex = (page - 1) * pageSize
     const endIndex = startIndex + pageSize
-    const pageContents = allContents.slice(startIndex, endIndex)
+    const pageContents = sortedContents.slice(startIndex, endIndex)
 
     if (pageContents.length === 0) {
       return res
@@ -139,6 +141,77 @@ app.get('/files', async (req, res) => {
   }
 })
 
+const tempDir = path.resolve(__dirname, 'tmp')
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir)
+}
+
+app.get('/file/:key', async (req, res) => {
+  const { key } = req.params
+  const { typeFile } = req.query
+
+  if (!typeFile) {
+    return res.status(400).json({ message: 'Invalid type file' })
+  }
+  if (!key) {
+    return res.status(404).json({ message: 'Invalid key' })
+  }
+
+  const params = {
+    Bucket: env.AWS_BUCKET_NAME,
+    Key: key,
+  }
+
+  try {
+    const data = await s3.getObject(params).promise()
+
+    const localFilePath = path.join(tempDir, key)
+    if (!data.Body) {
+      return res.status(400).json({ message: 'file not found' })
+    }
+    fs.writeFileSync(localFilePath, data.Body)
+
+    if (typeFile === 'pdf') {
+      const pdfData = fs.createReadStream(localFilePath)
+      res.setHeader('Content-Type', 'application/pdf')
+      pdfData.pipe(res)
+      setTimeout(async () => {
+        await fs.promises.unlink(localFilePath)
+      }, 2000)
+    } else {
+      exec(
+        `soffice --headless --convert-to pdf --outdir ${tempDir} ${localFilePath}`,
+        async (error, stdout, stderr) => {
+          if (error) {
+           
+            res.status(500).send('Error converting the file.')
+            return
+          }
+
+          try {
+            const pdfFilePath = path.join(
+              tempDir,
+              `${key.split('.').slice(0, -1).join('.')}.pdf`,
+            )
+            const pdfData = fs.createReadStream(pdfFilePath)
+
+            res.setHeader('Content-Type', 'application/pdf')
+            pdfData.pipe(res)
+
+            await fs.promises.unlink(localFilePath)
+            await fs.promises.unlink(pdfFilePath)
+          } catch (err) {
+           
+            res.status(500).json({message:'Error sending the PDF file.'})
+          }
+        },
+      )
+    }
+  } catch (error) {
+    res.status(500).json({message:'Error downloading the file from S3.'})
+  }
+})
+
 app.get('/download/:fileName', async (req, res) => {
   const fileName = req.params.fileName
 
@@ -149,10 +222,8 @@ app.get('/download/:fileName', async (req, res) => {
     }
 
     const url = await s3.getSignedUrlPromise('getObject', params)
-
-    res.redirect(url)
+    return res.status(200).json({ downloadFile: url })
   } catch (error) {
-    console.error('Error downloading file from S3:', error)
     return res.status(500).json({ message: 'Error downloading file from S3' })
   }
 })
@@ -200,7 +271,6 @@ app.get('/download-all', async (req, res) => {
 
     zip.finalize()
   } catch (error) {
-    console.error('Error downloading files from S3:', error)
     return res.status(500).json({ message: 'Error downloading files from S3' })
   }
 })
