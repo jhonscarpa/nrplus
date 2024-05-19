@@ -11,8 +11,8 @@ import path from 'path'
 
 const app = express()
 
-app.listen(3333, () => {
-  console.log('🚀 server listening on port :3333 🚀')
+app.listen(env.PORT, () => {
+  console.log(`🚀 server listening on port: ${env.PORT} 🚀`)
 })
 const corsOptions = {
   origin: '*',
@@ -183,7 +183,6 @@ app.get('/file/:key', async (req, res) => {
         `soffice --headless --convert-to pdf --outdir ${tempDir} ${localFilePath}`,
         async (error, stdout, stderr) => {
           if (error) {
-           
             res.status(500).send('Error converting the file.')
             return
           }
@@ -201,14 +200,13 @@ app.get('/file/:key', async (req, res) => {
             await fs.promises.unlink(localFilePath)
             await fs.promises.unlink(pdfFilePath)
           } catch (err) {
-           
-            res.status(500).json({message:'Error sending the PDF file.'})
+            res.status(500).json({ message: 'Error sending the PDF file.' })
           }
         },
       )
     }
   } catch (error) {
-    res.status(500).json({message:'Error downloading the file from S3.'})
+    res.status(500).json({ message: 'Error downloading the file from S3.' })
   }
 })
 
