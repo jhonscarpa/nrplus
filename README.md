@@ -87,13 +87,13 @@ O servidor estará disponivel na porta especifica no arquivo `.env`.
 
 ## Dependências
 
-- [express](https://www.npmjs.com/package/express){:target="_blank"}
-- [multer](https://www.npmjs.com/package/multer){:target="_blank"}
-- [aws-sdk](https://www.npmjs.com/package/aws-sdk){:target="_blank"}
-- [archiver](https://www.npmjs.com/package/archiver){:target="_blank"}
-- [cors](https://www.npmjs.com/package/cors){:target="_blank"}
-- [dotenv](https://www.npmjs.com/package/dotenv){:target="_blank"}
-- [libreoffice](https://www.libreoffice.org/download/download/){:target="_blank"}
+- <a href='https://www.npmjs.com/package/express' target='_blank'>express</a>
+- <a href='https://www.npmjs.com/package/multer' target='_blank'>multer</a>
+- <a href='https://www.npmjs.com/package/aws-sdk' target='_blank'>aws-sdk</a>
+- <a href='https://www.npmjs.com/package/archiver' target='_blank'>archiver</a> 
+- <a href='https://www.npmjs.com/package/cors' target='_blank'>cors</a>
+- <a href='https://www.npmjs.com/package/dotenv' target='_blank'>dotenv</a>
+- <a href='https://www.libreoffice.org/download/download/' target='_blank'>LibreOffice</a>
 
 
 
