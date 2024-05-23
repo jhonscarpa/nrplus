@@ -69,7 +69,7 @@ app.post('/upload', upload.array('files', 100), async (req, res) => {
     const promises = req.files.map(async (file: Express.Multer.File) => {
       const params = {
         Bucket: env.AWS_BUCKET_NAME,
-        Key: file.originalname.replace(/ /g, '_').replace('-', '_'),
+        Key: file.originalname.replace(/ /g, '_').replace('-', '_').replace(/[\/()]/g, ''),
 
         Body: file.buffer,
       }
