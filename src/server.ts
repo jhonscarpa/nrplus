@@ -4,7 +4,6 @@ import archiver from 'archiver'
 import cors from 'cors'
 import express, { Request } from 'express'
 import { env } from './utils/env'
-
 import { exec } from 'child_process'
 import fs from 'fs'
 import path from 'path'
@@ -52,7 +51,11 @@ const fileFilter = (
   return cb(null, false)
 }
 
-const upload = multer({ storage, fileFilter })
+const limits = {
+  fileSize: 200 * 1024 * 1024,
+}
+
+const upload = multer({ storage, fileFilter, limits })
 
 app.post('/upload', upload.array('files', 100), async (req, res) => {
   if (!req.files) {
@@ -125,8 +128,8 @@ app.get('/files', async (req, res) => {
 
     if (pageContents.length === 0) {
       return res
-        .status(404)
-        .json({ message: 'No files found for the requested page' })
+        .status(200)
+        .json({ message: 'No files found for the requested page', files: [] })
     }
 
     return res.status(200).json({
